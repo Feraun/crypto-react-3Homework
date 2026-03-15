@@ -1,102 +1,201 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+} from "react";
 import { getPrice } from "./api";
 import { useOnline } from "./useOnline";
+import "./index.css";
 
+//монета
 type Coin = {
   name: string;
   price: number | null;
   change?: "up" | "down";
 };
 
+//объект, хранящий в себе {DOGE : {name: "DOGE", price: null, change: ЕГО МОЖЕТ НЕ БЫТЬ }}
+type CoinsState = Record<string, Coin>;
+
 export default function App() {
-  const [coins, setCoins] = useState<Coin[]>([
-    { name: "DOGE", price: null },
-  ]);
+  const [coins, setCoins] = useState<CoinsState>({
+    DOGE: { name: "DOGE", price: null },
+  });
 
+  //ввод названия
+  const [input, setInput] = useState("");
+
+  const [error, setError] = useState<string | null>(null);
+
+  //мой кастомный
   const online = useOnline();
-  const ref = useRef<any>();
 
-  async function updateCoin(name: string) {
-    const p = await getPrice(name);
+  //для таймера
+  const intervalRef = useRef<number | null>(null);
 
-    setCoins(prev =>
-      prev.map(c => {
-        if (c.name !== name) return c;
+  //
+  const updateCoin = useCallback(
+    async (name: string) => {
+      try {
+        const p = await getPrice(name);
+        
+       
+        setCoins(prev => {
+          const coin = prev[name];
 
-        let change: "up" | "down" | undefined;
-        if (c.price !== null) {
-          if (p > c.price) change = "up";
-          if (p < c.price) change = "down";
-        }
+          //если монета не нашлась возвращаем предыдущий массив, 
+          if (!coin){ 
+            return prev;
+          }
 
-        return { ...c, price: p, change };
-      })
-    );
-  }
+          let change: Coin["change"];
 
-  async function updateAll() {
-    for (const c of coins) {
-      await updateCoin(c.name);
+          if (coin.price !== null) {
+            if (p > coin.price) change = "up";
+            if (p < coin.price) change = "down";
+          }
+
+          return {
+            ...prev,
+            //если нашлась, то добавляем ее
+            [name]: {
+              ...coin,
+              price: p,
+              change,
+            },
+          };
+        });
+
+        setError(null);
+      } catch {
+        setError("Currency not found");
+      }
+    },
+    []
+  );
+
+  const updateAll = useCallback(async () => {
+    const names = Object.keys(coins);
+
+    for (const name of names) {
+      await updateCoin(name);
     }
-    start();
-  }
 
-  function start() {
-    clearInterval(ref.current);
+    startInterval();
+  }, [coins, updateCoin]);
 
-    ref.current = setInterval(() => {
-      coins.forEach(c => updateCoin(c.name));
+  const startInterval = useCallback(() => {
+    if (intervalRef.current !== null) {
+      clearInterval(intervalRef.current);
+    }
+
+    intervalRef.current = window.setInterval(() => {
+      Object.keys(coins).forEach(name => {
+        updateCoin(name);
+      });
     }, 10000);
-  }
+  }, [coins, updateCoin]);
 
-  async function add(name: string) {
-    if (coins.find(c => c.name === name)) return;
+  const add = useCallback(
+    async (name: string) => {
+      if (!name) return;
 
-    const p = await getPrice(name);
+      if (coins[name]) {
+        setError("Already added");
+        return;
+      }
 
-    setCoins([...coins, { name, price: p }]);
-  }
+      try {
+        const price = await getPrice(name);
 
-  function del(name: string) {
-    setCoins(coins.filter(c => c.name !== name));
-  }
+        setCoins(prev => ({
+          ...prev,
+          [name]: {
+            name,
+            price,
+          },
+        }));
+
+        setError(null);
+      } catch {
+        setError("Currency not found");
+      }
+    },
+    [coins]
+  );
+
+  const del = useCallback((name: string) => {
+    setCoins(prev => {
+      const copy = { ...prev };
+      delete copy[name];
+      return copy;
+    });
+  }, []);
 
   useEffect(() => {
     updateAll();
-    start();
-    return () => clearInterval(ref.current);
+    startInterval();
+
+    return () => {
+      if (intervalRef.current !== null) {
+        clearInterval(intervalRef.current);
+      }
+    };
   }, []);
 
-  const [input, setInput] = useState("");
-
   return (
-    <div>
+    <div className="app">
       <h1>Crypto tracker</h1>
 
-      <div>{online ? "online" : "offline"}</div>
+      <div>
+        Status: {online ? "online" : "offline"}
+      </div>
+
+      {error && (
+        <div style={{ color: "red" }}>
+          {error}
+        </div>
+      )}
 
       <input
         value={input}
         onChange={e => setInput(e.target.value)}
       />
 
-      <button onClick={() => add(input.toUpperCase())}>
+      <button
+        onClick={() => {
+          add(input.toUpperCase());
+          setInput("");
+        }}
+      >
         Search
       </button>
 
-      <button onClick={updateAll}>Update all</button>
+      <button onClick={updateAll}>
+        Update all
+      </button>
 
-      {coins.map(c => (
+      {Object.values(coins).map(c => (
         <div key={c.name}>
-          {c.name} {c.price} {c.change === "up" ? "↑" : c.change === "down" ? "↓" : ""}
+        
+          {c.name} {c.price ?? "-"}
 
-          <button onClick={() => updateCoin(c.name)}>
+          {c.change === "up" && " ↑"}
+          {c.change === "down" && " ↓"}
+
+          <button
+            onClick={() => updateCoin(c.name)}
+          >
             Update
           </button>
 
-          <button onClick={() => del(c.name)}>
+          <button
+            onClick={() => del(c.name)}
+          >
             Delete
           </button>
+
         </div>
       ))}
     </div>
