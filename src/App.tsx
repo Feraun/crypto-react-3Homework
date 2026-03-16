@@ -4,12 +4,13 @@ import {
   useState,
   useCallback,
 } from "react";
+import { CoinRow } from "./CoinRow";
 import { getPrice } from "./api";
 import { useOnline } from "./useOnline";
 import "./index.css";
 
 //монета
-type Coin = {
+export type Coin = {
   name: string;
   price: number | null;
   change?: "up" | "down";
@@ -85,6 +86,7 @@ export default function App() {
     startInterval();
   }, [coins, updateCoin]);
 
+  
   const startInterval = useCallback(() => {
     if (intervalRef.current !== null) {
       clearInterval(intervalRef.current);
@@ -96,6 +98,7 @@ export default function App() {
       });
     }, 10000);
   }, [coins, updateCoin]);
+
 
   const add = useCallback(
     async (name: string) => {
@@ -177,26 +180,12 @@ export default function App() {
       </button>
 
       {Object.values(coins).map(c => (
-        <div key={c.name}>
-        
-          {c.name} {c.price ?? "-"}
-
-          {c.change === "up" && " ↑"}
-          {c.change === "down" && " ↓"}
-
-          <button
-            onClick={() => updateCoin(c.name)}
-          >
-            Update
-          </button>
-
-          <button
-            onClick={() => del(c.name)}
-          >
-            Delete
-          </button>
-
-        </div>
+        <CoinRow
+          key={c.name}
+          coin={c}
+          onUpdate={updateCoin}
+          onDelete={del}
+        />
       ))}
     </div>
   );
